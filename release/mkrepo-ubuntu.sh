@@ -48,6 +48,12 @@ P8_ARCHDIR="$5"                   # path to p8 packages (optional)
 #  Variables which are not set dynamically (because they don't change often)
 #-------------------------------------------------------------------------------
 
+# set location of prep.conf and prep.log to XDG-compatible directories and then
+# create them if they don't exist
+dir_conf=${XDG_CONFIG_HOME:-~/.config}
+dir_log=${XDG_DATA_HOME:-~/.local/share}
+
+
 # Set the appropriate dists based on the ${ARCHDIR} of the packages
 case ${ARCHDIR} in
   *"5.5"*)
@@ -83,11 +89,11 @@ runCommand() {
 
 loadDefaults() {
   # Load the paths (if they exist)
-  if [ -f ${HOME}/.prep.conf ]; then
-      . ${HOME}/.prep.conf
+  if [ -f ${dir_conf}/prep.conf ]; then
+      . ${dir_conf}/prep.conf
   else
     echo
-    echo "The file ${HOME}/.prep.conf does not exist in your home."
+    echo "The file ${dir_conf}/prep.conf does not exist in your home."
     echo "The prep script creates a default template of this file when run."
     echo "Exiting..."
     exit 1
@@ -231,38 +237,48 @@ for dist in ${ubuntu_dists}; do
 
   # Copy in galera packages if requested
   if [ ${GALERA} = "yes" ]; then
-    for gv in ${ver_galera}; do
+    case ${ARCHDIR} in
+      *10.4*)
+        ver_galera_real=${ver_galera4}
+        galera_name='galera-4'
+        ;;
+      *)
+        ver_galera_real=${ver_galera}
+        galera_name='galera-3'
+        ;;
+    esac
+    for gv in ${ver_galera_real}; do
       if [ "${ENTERPRISE}" = "yes" ]; then
         #for file in $(find "${dir_galera}/galera-${gv}-${suffix}/" -name "*${dist}*amd64.deb"); do reprepro -S optional -P misc --basedir=. includedeb ${dist} ${file} ; done
-        runCommand reprepro --basedir=. include ${dist} ${dir_galera}/galera-${gv}-${suffix}/deb/galera-3_${gv}-${dist}*_amd64.changes
+        runCommand reprepro --basedir=. include ${dist} ${dir_galera}/galera-${gv}-${suffix}/deb/${galera_name}_${gv}-${dist}*_amd64.changes
         if [ "${dist}" = "trusty" ] || [ "${dist}" = "xenial" ]; then
-          runCommand reprepro --basedir=. include ${dist} ${dir_galera}/galera-${gv}-${suffix}/deb/galera-3_${gv}-${dist}*_ppc64el.changes
+          runCommand reprepro --basedir=. include ${dist} ${dir_galera}/galera-${gv}-${suffix}/deb/${galera_name}_${gv}-${dist}*_ppc64el.changes
         fi
       else
 
         #for file in $(find "${dir_galera}/galera-${gv}-${suffix}/" -name "*${dist}*.deb"); do reprepro -S optional -P misc --basedir=. includedeb ${dist} ${file} ; done
 
         # include amd64
-        runCommand reprepro --basedir=. include ${dist} ${dir_galera}/galera-${gv}-${suffix}/deb/galera-3_${gv}-${dist}*_amd64.changes
+        runCommand reprepro --basedir=. include ${dist} ${dir_galera}/galera-${gv}-${suffix}/deb/${galera_name}_${gv}-${dist}*_amd64.changes
 
         # include i386
         case ${dist} in
           'trusty'|'xenial')
-            runCommand reprepro --basedir=. include ${dist} ${dir_galera}/galera-${gv}-${suffix}/deb/galera-3_${gv}-${dist}*_i386.changes
+            runCommand reprepro --basedir=. include ${dist} ${dir_galera}/galera-${gv}-${suffix}/deb/${galera_name}_${gv}-${dist}*_i386.changes
             ;;
         esac
 
         # include ppc64le
         case ${dist} in
           'trusty'|'xenial'|'bionic')
-            runCommand reprepro --basedir=. include ${dist} ${dir_galera}/galera-${gv}-${suffix}/deb/galera-3_${gv}-${dist}*_ppc64el.changes
+            runCommand reprepro --basedir=. include ${dist} ${dir_galera}/galera-${gv}-${suffix}/deb/${galera_name}_${gv}-${dist}*_ppc64el.changes
             ;;
         esac
 
         # include arm64 (aarch64)
         case ${dist} in
           'xenial'|'bionic')
-            runCommand reprepro --basedir=. include ${dist} ${dir_galera}/galera-${gv}-${suffix}/deb/galera-3_${gv}-${dist}*_arm64.changes
+            runCommand reprepro --basedir=. include ${dist} ${dir_galera}/galera-${gv}-${suffix}/deb/${galera_name}_${gv}-${dist}*_arm64.changes
             ;;
         esac
       fi

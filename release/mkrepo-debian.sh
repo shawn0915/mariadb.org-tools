@@ -49,6 +49,12 @@ ARCHDIR="$5"                      # path to the packages
 #-------------------------------------------------------------------------------
 architectures="amd64 i386 source"
 
+# set location of prep.conf and prep.log to XDG-compatible directories and then
+# create them if they don't exist
+dir_conf=${XDG_CONFIG_HOME:-~/.config}
+dir_log=${XDG_DATA_HOME:-~/.local/share}
+
+
 #-------------------------------------------------------------------------------
 #  Functions
 #-------------------------------------------------------------------------------
@@ -71,11 +77,11 @@ runCommand() {
 
 loadDefaults() {
   # Load the paths (if they exist)
-  if [ -f ${HOME}/.prep.conf ]; then
-      . ${HOME}/.prep.conf
+  if [ -f ${dir_conf}/prep.conf ]; then
+      . ${dir_conf}/prep.conf
   else
     echo
-    echo "The file ${HOME}/.prep.conf does not exist in your home."
+    echo "The file ${dir_conf}/prep.conf does not exist in your home."
     echo "The prep script creates a default template of this file when run."
     echo "Exiting..."
     exit 1
@@ -230,14 +236,23 @@ case ${TREE} in
   '10.0e'|'10.0e-galera')
     debian_dists="jessie"
     ;;
-  '10.0'|'10.0-galera')
+  '10.0'|'10.0-galera'|'bb-10.0-release')
     debian_dists="jessie"
     ;;
-  '10.1')
-    debian_dists="jessie stretch sid"
+  '10.1'|'bb-10.1-release')
+    debian_dists="jessie stretch"
+    ;;
+  '10.2'|'bb-10.2-release')
+    debian_dists="jessie stretch"
+    ;;
+  '10.3'|'bb-10.3-release')
+    debian_dists="jessie stretch buster sid"
+    ;;
+  '10.4'|'bb-10.4-release')
+    debian_dists="jessie stretch buster sid"
     ;;
   *)
-    debian_dists="jessie stretch sid"
+    debian_dists="jessie stretch buster"
     ;;
 esac
 
@@ -260,7 +275,7 @@ for dist in ${debian_dists}; do
     'jessie')
       runCommand reprepro --basedir=. include ${dist} $ARCHDIR/kvm-deb-${builder}-amd64/debs/binary/mariadb-*_amd64.changes
       ;;
-    'stretch'|'sid')
+    'stretch'|'buster'|'sid')
       # Need to remove *.buildinfo lines from changes file so reprepro doesn't choke
       #runCommand sudo vi $ARCHDIR/kvm-deb-${builder}-amd64/debs/binary/mariadb-*_amd64.changes
       runCommand reprepro --basedir=. include ${dist} $ARCHDIR/kvm-deb-${builder}-amd64/debs/binary/mariadb-*_amd64.changes
@@ -290,6 +305,9 @@ for dist in ${debian_dists}; do
       #  # use stretch packages for sid, for now - 2017-08-01 dbart
       #  for i in $(find "$ARCHDIR/kvm-deb-stretch-x86/" -name '*_i386.deb'); do reprepro --ignore=wrongdistribution --ignore=surprisingbinary --basedir=. includedeb ${dist} $i ; done
       #  ;;
+      'buster')
+        echo "+ no x86 packages for ${builder}"
+        ;;
       * )
         for i in $(find "$ARCHDIR/kvm-deb-${builder}-x86/" -name '*_i386.deb'); do runCommand reprepro --basedir=. includedeb ${dist} $i ; done
         ;;
@@ -305,13 +323,23 @@ for dist in ${debian_dists}; do
       fi
       ;;
     * )
-      echo "no custom jemalloc packages for ${dist}"
+      echo "+ no custom jemalloc packages for ${dist}"
       ;;
   esac
 
   # Copy in galera packages if requested
   if [ ${GALERA} = "yes" ]; then
-    for gv in ${ver_galera}; do
+    case ${TREE} in
+      *10.4*)
+        ver_galera_real=${ver_galera4}
+        galera_name='galera-4'
+        ;;
+      *)
+        ver_galera_real=${ver_galera}
+        galera_name='galera-3'
+        ;;
+    esac
+    for gv in ${ver_galera_real}; do
       #for file in $(find "${dir_galera}/galera-${gv}-${suffix}/" -name "*${dist}*.deb"); do reprepro -S optional -P misc --basedir=. includedeb ${dist} ${file} ; done
       #case ${dist} in
       #  'jessie')
@@ -321,21 +349,24 @@ for dist in ${debian_dists}; do
 
           case ${dist} in
             "jessie"|"stretch")
-              runCommand reprepro --basedir=. include ${dist} ${dir_galera}/galera-${gv}-${suffix}/deb/galera-3_${gv}-${dist}*_amd64.changes
-              runCommand reprepro --basedir=. include ${dist} ${dir_galera}/galera-${gv}-${suffix}/deb/galera-3_${gv}-${dist}*_ppc64el.changes
+              runCommand reprepro --basedir=. include ${dist} ${dir_galera}/galera-${gv}-${suffix}/deb/${galera_name}_${gv}-${dist}*_amd64.changes
+              runCommand reprepro --basedir=. include ${dist} ${dir_galera}/galera-${gv}-${suffix}/deb/${galera_name}_${gv}-${dist}*_ppc64el.changes
               ;;
             *) 
-              runCommand reprepro --basedir=. include ${dist} ${dir_galera}/galera-${gv}-${suffix}/deb/galera-3_${gv}-${dist}*_amd64.changes
+              runCommand reprepro --basedir=. include ${dist} ${dir_galera}/galera-${gv}-${suffix}/deb/${galera_name}_${gv}-${dist}*_amd64.changes
               ;;
           esac
 
           if [ "${ENTERPRISE}" != "yes" ]; then
             case ${dist} in
               #"sid")
-              #  runCommand reprepro --basedir=. include ${dist} ${dir_galera}/galera-${gv}-${suffix}/deb/galera-3_25.3.19-${dist}*_i386.changes
+              #  runCommand reprepro --basedir=. include ${dist} ${dir_galera}/galera-${gv}-${suffix}/deb/${galera_name}_25.3.19-${dist}*_i386.changes
               #  ;;
+              'buster')
+                echo "+ no x86 packages for ${dist}"
+                ;;
               *)
-                runCommand reprepro --basedir=. include ${dist} ${dir_galera}/galera-${gv}-${suffix}/deb/galera-3_${gv}-${dist}*_i386.changes
+                runCommand reprepro --basedir=. include ${dist} ${dir_galera}/galera-${gv}-${suffix}/deb/${galera_name}_${gv}-${dist}*_i386.changes
                 ;;
             esac
           fi

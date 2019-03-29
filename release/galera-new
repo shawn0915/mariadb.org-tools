@@ -26,7 +26,7 @@ create_ubuntu="${2}"  # Create Ubuntu repository?
 
 case ${tree} in 
   '5.5'|'5.5-galera')
-    debian_dists="wheezy"
+    debian_dists=""
     ubuntu_dists="trusty"
     yum_dists="
       centos6-amd64
@@ -43,7 +43,7 @@ case ${tree} in
     "
     ;;
   '10.0'|'10.0-galera')
-    debian_dists="wheezy jessie"
+    debian_dists="jessie"
     ubuntu_dists="trusty xenial"
     yum_dists="
       centos6-amd64
@@ -64,8 +64,8 @@ case ${tree} in
       sles12-ppc64le
     "
     ;;
-  *) debian_dists="wheezy jessie sid"
-     ubuntu_dists="trusty xenial artful"
+  *) debian_dists="jessie sid"
+     ubuntu_dists="trusty xenial bionic cosmic"
      yum_dists="
       centos6-amd64
       centos6-x86
@@ -93,17 +93,23 @@ esac
 
 release="mariadb-${num}"                  # release to add galera packages to
 
+# set location of prep.conf and prep.log to XDG-compatible directories and then
+# create them if they don't exist
+dir_conf=${XDG_CONFIG_HOME:-~/.config}
+dir_log=${XDG_DATA_HOME:-~/.local/share}
+
+
 #-------------------------------------------------------------------------------
 #  Functions
 #-------------------------------------------------------------------------------
 
 loadDefaults() {
   # Load the paths (if they exist)
-  if [ -f ${HOME}/.prep.conf ]; then
-      . ${HOME}/.prep.conf
+  if [ -f ${dir_conf}/prep.conf ]; then
+      . ${dir_conf}/prep.conf
   else
     echo
-    echo "The file ${HOME}/.prep.conf does not exist in your home."
+    echo "The file ${dir_conf}/prep.conf does not exist in your home."
     echo "The prep script creates a default template of this file when run."
     echo "Exiting..."
     exit 1

@@ -47,6 +47,12 @@ P8_ARCHDIR="$4"                   # path to ppc64 packages (optional)
 #  Variables which are not set dynamically (because they don't change often)
 #-------------------------------------------------------------------------------
 
+# set location of prep.conf and prep.log to XDG-compatible directories and then
+# create them if they don't exist
+dir_conf=${XDG_CONFIG_HOME:-~/.config}
+dir_log=${XDG_DATA_HOME:-~/.local/share}
+
+
 # If we are on 5.5 then no fedora
 if [[ "${ARCHDIR}" == *"5.5"* ]]; then
   dists="
@@ -102,13 +108,35 @@ elif [[ "${ARCHDIR}" = *"10.1"* ]]; then
   "
 elif [[ "${ARCHDIR}" = *"10.4"* ]]; then
   dists="
+    centos73-amd64
+    centos73-ppc64
+    centos73-ppc64le
+
+    centos74-aarch64
+
+    rhel8-amd64
+
+    fedora28-amd64
+    fedora29-amd64
+
+    opensuse42-amd64
+    opensuse150-amd64
+
+    sles12-amd64
+    sles150-amd64
+  "
+elif [[ "${ARCHDIR}" = *"10.3"* ]]; then
+  dists="
     centos6-amd64
+    centos6-x86
 
     centos73-amd64
     centos73-ppc64
     centos73-ppc64le
 
     centos74-aarch64
+
+    rhel8-amd64
 
     fedora28-amd64
     fedora29-amd64
@@ -120,7 +148,7 @@ elif [[ "${ARCHDIR}" = *"10.4"* ]]; then
     sles12-ppc64le
     sles150-amd64
   "
-else
+elif [[ "${ARCHDIR}" = *"10.2"* ]]; then
   dists="
     centos6-amd64
     centos6-x86
@@ -131,7 +159,6 @@ else
 
     centos74-aarch64
 
-    fedora27-amd64
     fedora28-amd64
 
     opensuse42-amd64
@@ -150,11 +177,11 @@ suffix="signed"
 #-------------------------------------------------------------------------------
 loadDefaults() {
   # Load the paths and other settings (if they exist)
-  if [ -f ${HOME}/.prep.conf ]; then
-      . ${HOME}/.prep.conf
+  if [ -f ${dir_conf}/prep.conf ]; then
+      . ${dir_conf}/prep.conf
   else
     echo
-    echo "The file ${HOME}/.prep.conf does not exist in your home."
+    echo "The file ${dir_conf}/prep.conf does not exist in your home."
     echo "The prep script creates a default template of this file when run."
     echo "Exiting..."
     exit 1
@@ -239,6 +266,15 @@ set -u
   #     An error message will be written to the standard error, and a
   #     non-interactive shell will exit.
 
+case ${ARCHDIR} in
+  *10.4*)
+    ver_galera_real=${ver_galera4}
+    ;;
+  *)
+    ver_galera_real=${ver_galera}
+    ;;
+esac
+
 # Copy over the packages
 for REPONAME in ${dists}; do
   case "${REPONAME}" in
@@ -251,7 +287,7 @@ for REPONAME in ${dists}; do
       copy_files "${ARCHDIR}/kvm-rpm-${REPONAME}/ ./${REPONAME}/"
 
       # Copy in Galera files
-      for gv in ${ver_galera}; do
+      for gv in ${ver_galera_real}; do
         copy_files "${dir_galera}/galera-${gv}-${suffix}/rpm/${REPONAME}/galera*.rpm ${REPONAME}/rpms/"
       done
 
@@ -276,7 +312,7 @@ for REPONAME in ${dists}; do
       copy_files "${ARCHDIR}/kvm-rpm-${REPONAME}/ ./${REPONAME}/"
 
       # Copy in galera files
-      for gv in ${ver_galera}; do
+      for gv in ${ver_galera_real}; do
         copy_files "${dir_galera}/galera-${gv}-${suffix}/rpm/${REPONAME}/galera*.rpm ${REPONAME}/rpms/"
       done
       
@@ -302,7 +338,7 @@ for REPONAME in ${dists}; do
       copy_files "${ARCHDIR}/kvm-rpm-${REPONAME}/ ./${REPONAME}/"
 
       # Copy in galera files
-      for gv in ${ver_galera}; do
+      for gv in ${ver_galera_real}; do
         copy_files "${dir_galera}/galera-${gv}-${suffix}/rpm/${REPONAME}/galera*.rpm ${REPONAME}/rpms/"
       done
       
@@ -321,7 +357,7 @@ for REPONAME in ${dists}; do
       copy_files "${ARCHDIR}/kvm-rpm-${REPONAME}/ ./${REPONAME}/"
 
       # Copy in galera files
-      for gv in ${ver_galera}; do
+      for gv in ${ver_galera_real}; do
         copy_files "${dir_galera}/galera-${gv}-${suffix}/rpm/${REPONAME}/galera*.rpm ${REPONAME}/rpms/"
       done
       
@@ -340,7 +376,7 @@ for REPONAME in ${dists}; do
       copy_files "${ARCHDIR}/kvm-rpm-${REPONAME}/ ./${REPONAME}/"
 
       # Copy in galera files
-      for gv in ${ver_galera}; do
+      for gv in ${ver_galera_real}; do
         copy_files "${dir_galera}/galera-${gv}-${suffix}/rpm/${REPONAME}/galera*.rpm ${REPONAME}/rpms/"
       done
       
@@ -358,7 +394,7 @@ for REPONAME in ${dists}; do
       copy_files "${ARCHDIR}/kvm-rpm-${REPONAME}/ ./${REPONAME}/"
 
       # Copy in galera files
-      for gv in ${ver_galera}; do
+      for gv in ${ver_galera_real}; do
         copy_files "${dir_galera}/galera-${gv}-${suffix}/rpm/${REPONAME}/galera*.rpm ${REPONAME}/rpms/"
       done
       
@@ -375,13 +411,27 @@ for REPONAME in ${dists}; do
       copy_files "${ARCHDIR}/kvm-rpm-${REPONAME}/ ./${REPONAME}/"
 
       # Copy in galera files
-      for gv in ${ver_galera}; do
+      for gv in ${ver_galera_real}; do
         copy_files "${dir_galera}/galera-${gv}-${suffix}/rpm/${REPONAME}/galera*.rpm ${REPONAME}/rpms/"
       done
       
       # Copy in other files
       copy_files "${dir_jemalloc}/jemalloc-${REPONAME}-${suffix}/*.rpm ./${REPONAME}/rpms/"
       copy_files "${dir_libzstd}/${REPONAME}-${suffix}/*.rpm ./${REPONAME}/rpms/"
+      ;;
+    'rhel8-amd64')
+      runCommand mkdir -vp rhel/8/x86_64
+      maybe_make_symlink rhel/8/x86_64 rhel8-amd64
+      maybe_make_symlink rhel8-amd64 centos8-amd64
+
+      # Copy in MariaDB files
+      copy_files "${ARCHDIR}/kvm-rpm-${REPONAME}/ ./${REPONAME}/"
+
+      # Copy in galera files
+      for gv in ${ver_galera_real}; do
+        copy_files "${dir_galera}/galera-${gv}-${suffix}/rpm/${REPONAME}/galera*.rpm ${REPONAME}/rpms/"
+      done
+
       ;;
     'fedora25-x86')
       runCommand mkdir -vp fedora/25/i386
@@ -391,7 +441,7 @@ for REPONAME in ${dists}; do
       copy_files "${ARCHDIR}/kvm-rpm-${REPONAME}/ ./${REPONAME}/"
 
       # Copy in galera files
-      for gv in ${ver_galera}; do
+      for gv in ${ver_galera_real}; do
         copy_files "${dir_galera}/galera-${gv}-${suffix}/rpm/${REPONAME}/galera*.rpm ${REPONAME}/rpms/"
       done
       ;;
@@ -403,7 +453,7 @@ for REPONAME in ${dists}; do
       copy_files "${ARCHDIR}/kvm-rpm-${REPONAME}/ ./${REPONAME}/"
 
       # Copy in galera files
-      for gv in ${ver_galera}; do
+      for gv in ${ver_galera_real}; do
         copy_files "${dir_galera}/galera-${gv}-${suffix}/rpm/${REPONAME}/galera*.rpm ${REPONAME}/rpms/"
       done
       ;;
@@ -416,21 +466,9 @@ for REPONAME in ${dists}; do
               rsync -a --info=progress2 --keep-dirlinks ${ARCHDIR}/kvm-rpm-${REPONAME}/ ./${REPONAME}/
 
       # Copy in galera files
-      for gv in ${ver_galera}; do
+      for gv in ${ver_galera_real}; do
         echo "+ rsync -av --keep-dirlinks ${dir_galera}/galera-${gv}-${suffix}/rpm/${REPONAME}/galera*.rpm ${REPONAME}/rpms/"
                 rsync -av --keep-dirlinks ${dir_galera}/galera-${gv}-${suffix}/rpm/${REPONAME}/galera*.rpm ${REPONAME}/rpms/
-      done
-      ;;
-    'fedora27-amd64')
-      runCommand mkdir -vp fedora/27/x86_64
-      maybe_make_symlink fedora/27/x86_64 fedora27-amd64
-
-      # Copy in MariaDB files
-      copy_files "${ARCHDIR}/kvm-rpm-${REPONAME}/ ./${REPONAME}/"
-
-      # Copy in galera files
-      for gv in ${ver_galera}; do
-        copy_files "${dir_galera}/galera-${gv}-${suffix}/rpm/${REPONAME}/galera*.rpm ${REPONAME}/rpms/"
       done
       ;;
     'fedora28-amd64')
@@ -441,7 +479,7 @@ for REPONAME in ${dists}; do
       copy_files "${ARCHDIR}/kvm-rpm-${REPONAME}/ ./${REPONAME}/"
 
       # Copy in galera files
-      #for gv in ${ver_galera}; do
+      #for gv in ${ver_galera_real}; do
       #  copy_files "${dir_galera}/galera-${gv}-${suffix}/rpm/${REPONAME}/galera*.rpm ${REPONAME}/rpms/"
       #done
       ;;
@@ -460,7 +498,7 @@ for REPONAME in ${dists}; do
       copy_files "${ARCHDIR}/kvm-zyp-${REPONAME}/ ./${REPONAME}/"
 
       # Copy in galera files
-      for gv in ${ver_galera}; do
+      for gv in ${ver_galera_real}; do
         copy_files "${dir_galera}/galera-${gv}-${suffix}/rpm/${REPONAME}/galera*.rpm ${REPONAME}/rpms/"
       done
       ;;
@@ -472,7 +510,7 @@ for REPONAME in ${dists}; do
       copy_files "${ARCHDIR}/kvm-zyp-${REPONAME}/ ./${REPONAME}/"
 
       # Copy in galera files
-      for gv in ${ver_galera}; do
+      for gv in ${ver_galera_real}; do
         copy_files "${dir_galera}/galera-${gv}-${suffix}/rpm/${REPONAME}/galera*.rpm ${REPONAME}/rpms/"
       done
       ;;
@@ -486,7 +524,7 @@ for REPONAME in ${dists}; do
               rsync -av --keep-dirlinks ${ARCHDIR}/kvm-zyp-${REPONAME}/ ./${REPONAME}/
 
       # Copy in galera files
-      for gv in ${ver_galera}; do
+      for gv in ${ver_galera_real}; do
         copy_files "${dir_galera}/galera-${gv}-${suffix}/rpm/sles11-x86/galera*.rpm ${REPONAME}/rpms/"
       done
       ;;
@@ -499,7 +537,7 @@ for REPONAME in ${dists}; do
       copy_files "${ARCHDIR}/kvm-zyp-${REPONAME}/ ./${REPONAME}/"
 
       # Copy in galera files
-      for gv in ${ver_galera}; do
+      for gv in ${ver_galera_real}; do
         copy_files "${dir_galera}/galera-${gv}-${suffix}/rpm/sles11-amd64/galera*.rpm ${REPONAME}/rpms/"
       done
       ;;
@@ -511,7 +549,7 @@ for REPONAME in ${dists}; do
       copy_files "${ARCHDIR}/kvm-zyp-sles123-amd64/ ./${REPONAME}/"
 
       # Copy in galera files
-      for gv in ${ver_galera}; do
+      for gv in ${ver_galera_real}; do
         copy_files "${dir_galera}/galera-${gv}-${suffix}/rpm/${REPONAME}/galera*.rpm ${REPONAME}/rpms/"
       done
       
@@ -526,7 +564,7 @@ for REPONAME in ${dists}; do
       copy_files "${P8_ARCHDIR}/p8-suse12-rpm/ ./${REPONAME}/"
 
       # Copy in galera files
-      for gv in ${ver_galera}; do
+      for gv in ${ver_galera_real}; do
         copy_files "${dir_galera}/galera-${gv}-${suffix}/rpm/${REPONAME}/galera*.rpm ${REPONAME}/rpms/"
       done
       ;;
@@ -538,7 +576,7 @@ for REPONAME in ${dists}; do
       copy_files "${ARCHDIR}/kvm-zyp-sles150-amd64/ ./${REPONAME}/"
 
       # Copy in galera files
-      for gv in ${ver_galera}; do
+      for gv in ${ver_galera_real}; do
         copy_files "${dir_galera}/galera-${gv}-${suffix}/rpm/${REPONAME}/galera*.rpm ${REPONAME}/rpms/"
       done
       ;;
@@ -581,10 +619,10 @@ for DIR in ${dists}; do
   # Create the repository and sign the repomd.xml file
   case ${DIR} in
     'sles114-amd64'|'sles114-x86')
-      runCommand createrepo -s sha --database --pretty ${DIR}
+      runCommand createrepo -s sha --update --database --pretty ${DIR}
       ;;
     *)
-      runCommand createrepo --database --pretty ${DIR}
+      runCommand createrepo --update --database --pretty ${DIR}
       ;;
   esac
   
@@ -600,10 +638,12 @@ for DIR in ${dists}; do
 
   echo 
   # Add a README to the srpms directory
-  runCommand mkdir -vp ${DIR}/srpms
-  echo "Why do MariaDB RPMs not include the source RPM (SRPMS)?
+  if [ ! -d ${DIR}/srpms ] ;then
+    runCommand mkdir -vp ${DIR}/srpms
+    echo "Why do MariaDB RPMs not include the source RPM (SRPMS)?
 https://mariadb.com/kb/en/why-do-mariadb-rpms-not-include-the-source-rpm-srpms
 " > ${DIR}/srpms/README
+  fi
 done
 
 

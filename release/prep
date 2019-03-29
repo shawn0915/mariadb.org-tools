@@ -43,6 +43,22 @@ set -eu
 # Various miscellaneous options
 rsync_opts="-a -L --info=progress2"
 
+# set location of prep.conf and prep.log to XDG-compatible directories and then
+# create them if they don't exist
+dir_conf=${XDG_CONFIG_HOME:-~/.config}
+dir_log=${XDG_DATA_HOME:-~/.local/share}
+
+if [ ! -d ${dir_conf}/ ];then
+  mkdir -vp ${dir_conf}
+fi
+
+if [ ! -d ${dir_log}/ ];then
+  mkdir -vp ${dir_log}
+fi
+
+
+
+
 #-------------------------------------------------------------------------------
 #  The ${build_dirs} option contains two-part names of various bintar builds
 #  separated by a colon. The first part is the name of the directory that
@@ -114,15 +130,15 @@ create_p8_bintar="no"
 # Functions
 #-------------------------------------------------------------------------------
 
-#function runCommand() {
-#  echo "+ ${@}"
-#  sleep 1
-#  if ${@} ; then
-#    return 0
-#  else
-#    return 1
-#  fi
-#}
+runCommand() {
+  echo "+ ${@}"
+  sleep 1
+  if ${@} ; then
+    return 0
+  else
+    return 1
+  fi
+}
 
 userResponse() {
   question="${@}"
@@ -194,7 +210,7 @@ include_Galera_packages_in_repositories() {
 }
 
 create_a_template_file() {
-cat >> ${HOME}/.prep.conf <<END
+cat >> ${dir_conf}/prep.conf <<END
 #-------------------------------------------------------------------------------
 # default conf file for the MariaDB 'prep' script
 #-------------------------------------------------------------------------------
@@ -220,8 +236,10 @@ dir_maxscale="/path/to/maxscale" # Location of maxscale pkgs
 
 dir_bundles="/path/to/bundles/TX" # where bundle tarballs should be saved
 
-ver_galera="25.3.24"                        # galera version[s] in our repos
-ver_galera_preferred="25.3.24"              # preferred galera version
+ver_galera="25.3.25"                        # galera version[s] in our repos
+ver_galera_preferred="25.3.25"              # preferred galera version
+ver_galera4="26.4.0"                        # galera4 version[s] in our repos
+ver_galera4_preferred="26.4.0"              # preferred galera4 version
 ver_nmap="6.25"                             # current nmap ver in sles12 repo
   
 # Full paths to the mkrepo-* scripts
@@ -256,6 +274,9 @@ dir_release_ent="/path/to/mariadb-enterprise/releases"
 # Full path to P8 builds (if needed)
 dir_archive_p8="/path/to/p8/archive/builds"
 
+# ssh key to use for uploading
+ssh_upload_key='.ssh/KEY_NAME'
+
 # Mirrors
 staging_mirror="mirror_name"
 primary_mirror="mirror_name"
@@ -279,11 +300,11 @@ co_home_corp="remote_home"
 # vim: filetype=sh
 
 END
-chown $(basename ${HOME}): ${HOME}/.prep.conf
+chown ${USER}: ${dir_conf}/prep.conf
 }
 
 logSettings() {
-cat >> ${HOME}/.prep.log <<END
+cat >> ${dir_log}/prep.log <<END
 
 # Prepped $(date)
 # Command:
@@ -312,7 +333,7 @@ cat >> ${HOME}/.prep.log <<END
 # gpg_opts="${gpg_opts}"
 
 END
-chown $(basename ${HOME}): ${HOME}/.prep.conf
+chown ${USER}: ${dir_conf}/prep.conf
 }
 
 pressAnyKeyToContinue() {
@@ -358,24 +379,24 @@ shouldI() {
 
 loadDefaults() {
   # Load the paths (if they exist)
-  if [ -f ${HOME}/.prep.conf ]; then
-      . ${HOME}/.prep.conf
+  if [ -f ${dir_conf}/prep.conf ]; then
+      . ${dir_conf}/prep.conf
   else
     echo
-    echo "The file ${HOME}/.prep.conf does not exist in your home"
+    echo "The file ${dir_conf}/prep.conf does not exist in your home"
     echo "directory. If it does not exist, and have valid settings in it,"
     echo "this script will fail. I can create a default template file for you"
     echo "to fill out. Afterwards, please re-run this script."
     echo
     shouldI create_a_template_file
     # after creating the file, check if it exists again, if not, exit
-    if [ ! -f ${HOME}/.prep.conf ]; then
-      echo "I was unable to create ${HOME}/.prep.conf"
+    if [ ! -f ${dir_conf}/prep.conf ]; then
+      echo "I was unable to create ${dir_conf}/prep.conf"
       echo "Exiting..."
       exit 3
     else
       echo
-      echo "Template file created at ${HOME}/.prep.conf"
+      echo "Template file created at ${dir_conf}/prep.conf"
       echo "Please edit and re-run this script."
       echo
       exit 0
@@ -393,7 +414,7 @@ usage() {
   echo "  -e : this is a MariaDB Enterprise release"
   echo "  -g : this is a MariaDB Galera Cluster or Enterprise Cluster release"
   echo "  -h : display this usage message"
-  echo "  -l : log the <tree>, <revision>, <tarbuildnum>, & etc... to ~/.prep.log"
+  echo "  -l : log the <tree>, <revision>, <tarbuildnum>, & etc... to ${dir_log}/prep.log"
   echo "  -t <tree> : the MariaDB source code tree"
   echo "  -r <revision> : the MariaDB source code tree revision"
   echo "  -v <version> : the MariaDB version number"
@@ -622,29 +643,6 @@ upload_from_the_staging_mirror_to_the_yum_mirrors() {
 #   DESCRIPTION:  Run the commands necessary to make the repository files public
 #===============================================================================
 activate_the_yum_repos() {
-  case ${tree} in
-    "5.5-galera")
-      dir_real='5.5'
-      ;;
-    "10.0-galera")
-      dir_real='10.0'
-      ;;
-    "bb-10.1-release")
-      dir_real='10.1'
-      ;;
-    "bb-10.2-release")
-      dir_real='10.2'
-      ;;
-    "bb-10.3-release")
-      dir_real='10.3'
-      ;;
-    "bb-10.4-release")
-      dir_real='10.4'
-      ;;
-    *)
-      dir_real="${tree}"
-      ;;
-  esac
   if [ "${galera_suffix}" = "-galera" ]; then
     # Do nothing if this is a galera release
     echo "This is a galera release, skipping this step..."
@@ -652,11 +650,11 @@ activate_the_yum_repos() {
     echo;echo;
     set -x
     for yum_mirror in ${yum_primary_mirror} ${yum_mirrors} ;do 
-      ssh -t -t ${yum_mirror} "cd ${yum_mirror_path}/;rm -v ${dir_real};ln -sv ${num} ${dir_real};echo;echo"; 
+      ssh -t -t ${yum_mirror} "cd ${yum_mirror_path}/;rm -v ${major};ln -sv ${num} ${major};echo;echo"; 
     done
     set +x
   fi
-  rsync_wrapper_primary "--delete-after -av data/${version_nog}/yum/ data/yum/${dir_real}/";
+  rsync_wrapper_primary "--delete-after -av data/${version_nog}/yum/ data/yum/${major}/";
   set -x
   ssh -t -t ${primary_mirror} "./trigger-mariadb";
   set +x
@@ -668,31 +666,8 @@ activate_the_yum_repos() {
 #===============================================================================
 activate_the_deb_repos() {
   set -x
-  case ${tree} in
-    "5.5-galera")
-      dir_real='5.5'
-      ;;
-    "10.0-galera")
-      dir_real='10.0'
-      ;;
-    "bb-10.1-release")
-      dir_real='10.1'
-      ;;
-    "bb-10.2-release")
-      dir_real='10.2'
-      ;;
-    "bb-10.3-release")
-      dir_real='10.3'
-      ;;
-    "bb-10.4-release")
-      dir_real='10.4'
-      ;;
-    *)
-      dir_real="${tree}"
-      ;;
-  esac
   set +x
-  rsync_wrapper_primary "--delete-after -av data/${version_nog}/repo/ data/repo/${dir_real}/";
+  rsync_wrapper_primary "--delete-after -av data/${version_nog}/repo/ data/repo/${major}/";
   set -x
   ssh -t -t ${primary_mirror} "./trigger-mariadb";
   set +x
@@ -703,36 +678,13 @@ activate_the_deb_repos() {
 #   DESCRIPTION:  Run the commands necessary to make the repository files public
 #===============================================================================
 activate_the_corp_repos() {
-  case ${tree} in
-    "5.5-galera")
-      dir_real='5.5'
-      ;;
-    "10.0-galera")
-      dir_real='10.0'
-      ;;
-    "bb-10.1-release")
-      dir_real='10.1'
-      ;;
-    "bb-10.2-release")
-      dir_real='10.2'
-      ;;
-    "bb-10.3-release")
-      dir_real='10.3'
-      ;;
-    "bb-10.4-release")
-      dir_real='10.4'
-      ;;
-    *)
-      dir_real="${tree}"
-      ;;
-  esac
   if [ "${galera_suffix}" = "-galera" ]; then
     # Do nothing if this is a galera release
     echo "This is a galera release, skipping this step..."
   else
     echo;echo;
     set -x
-    ssh -t -t ${corp_mirror} "cd ${corp_mirror_path}/;rm -v mariadb-${dir_real};ln -sv ${dir_name} mariadb-${dir_real};echo;echo";
+    ssh -t -t ${corp_mirror} "cd ${corp_mirror_path}/;rm -v mariadb-${major};ln -sv ${dir_name} mariadb-${major};echo;echo";
     set +x
   fi
 }
@@ -843,6 +795,14 @@ maybe_fix_permissions() {
     line
     echo "+ fixing permissions..."
     line
+
+    # Make sure parent dirs are OK first
+    sudo chmod -c 755 ${dir_archive}/${tree}/
+    sudo chmod -c 755 ${dir_archive}/${tree}/build-${tarbuildnum}/
+    sudo chmod -c 755 ${dir_archive_p8}/${tree}/
+    sudo chmod -c 755 ${dir_archive_p8}/${tree}/${rev}/
+
+    # scan and adjust perms of subdirs
     for dir in $(sudo find ${dir_archive}/${tree}/build-${tarbuildnum}/ -type d);do
       sudo chmod 755 "${dir}"
     done
@@ -895,13 +855,13 @@ exclude_an_old_release_from_the_yum_dir() {
 #                 Docker scripts
 #===============================================================================
 update_the_docker_mariadb_version() {
-  major=${num%.*}
   if [ ! -d ${dir_docker} ]; then
     set -x
     git clone git@github.com:mariadb-corporation/mariadb-server-docker ${dir_docker}
     set +x
   fi
   pushd ${dir_docker}
+    git checkout ${major}
     git pull
     if test -d ${major}; then       # only update version if the dir exists
       set -x
@@ -952,7 +912,7 @@ do
       displayusage="yes"
       log_displayusage="h"
       ;;
-    l)  # Log the release to ~/.prep.log
+    l)  # Log the release to ${dir_log}/prep.log
       log="yes"
       log_log="l"
       ;;
@@ -1010,6 +970,18 @@ fi
 
 loadDefaults                                    # Load Default paths and vars
 
+# create major variable that has the base major version of mariadb (e.g. 10.3)
+major=${num%.*}
+
+# Set the real version of galera to use
+if [ ${major} = "10.4" ]; then
+  ver_galera_real=${ver_galera4}
+  ver_galera_preferred_real=${ver_galera4_preferred}
+else
+  ver_galera_real=${ver_galera}
+  ver_galera_preferred_real=${ver_galera_preferred}
+fi
+
 # Put ${galera_suffix} and ${num} together to form the base version string
 if [ "${is_ent}" = "yes" ];then
   if [ "${galera_suffix}" = "-galera" ]; then
@@ -1026,7 +998,16 @@ shouldI prepare_bintar_and_source_packages
 if [ "${galera_suffix}" != "-galera" ]; then
   shouldI prepare_Windows_packages
 fi
-shouldI prepare_Debian_packages
+
+case $tree in
+  *5.5* )
+    echo "+ no Debian for 5.5"
+    ;;
+  *)
+    shouldI prepare_Debian_packages
+    ;;
+esac
+
 shouldI prepare_Ubuntu_packages
 shouldI prepare_yum_packages
 #shouldI include_Galera_packages_in_repositories
@@ -1072,6 +1053,12 @@ echo
 line
 echo "+ creating the ${version} release"
 line
+
+# start the ssh-agent and add the upload key
+eval $(ssh-agent)
+ssh-add ${ssh_upload_key}
+
+# start the gpg-agent if it's not already started
 eval $(gpg-agent --daemon)
 
 
@@ -1111,7 +1098,7 @@ if [ "${create_bintar}" != "no" ]; then
           ;;
       esac
       if [ "${dir_array[1]}" = "source" ]; then
-        if rsync ${rsync_opts} "${location}/mariadb-${num}.tar.gz" "/run/shm/${dir_array[1]}/mariadb${galera_suffix}-${num}.tar.gz"; then
+        if runCommand rsync ${rsync_opts} "${location}/mariadb-${num}.tar.gz" "/run/shm/${dir_array[1]}/mariadb${galera_suffix}-${num}.tar.gz"; then
           pushd /run/shm/${dir_array[1]}
           # rename the source tarball for enterprise
           if [ "${is_ent}" = "yes" ];then
@@ -1160,7 +1147,7 @@ if [ "${create_bintar}" != "no" ]; then
         fi
         echo "+ transfer of ${dir_array[1]} done"
         echo
-      elif rsync ${rsync_opts} "${location}/" "/run/shm/${dir_array[1]}/"; then
+      elif runCommand rsync ${rsync_opts} "${location}/" "/run/shm/${dir_array[1]}/"; then
         echo "+ transfer of ${dir_array[1]} done"
         pushd /run/shm/${dir_array[1]}/
         if [ "${dir_array[1]}" = "bintar-linux-glibc_214-x86_64" ] || [ "${dir_array[1]}" = "bintar-linux-glibc_214-x86" ]; then
@@ -1176,25 +1163,21 @@ if [ "${create_bintar}" != "no" ]; then
           if [ "${galera_suffix}" = "-galera" ] || [[ "${tree}" = *10.[1-9]* ]]; then
             # If this is a galera release we need to copy in the galera libraries
             # and repack the bintar
-            echo "+ tar -zxf ${version}-linux-glibc_214-${galera_arch}.tar.gz"
-                    tar -zxf ${version}-linux-glibc_214-${galera_arch}.tar.gz
+            runCommand tar -zxf ${version}-linux-glibc_214-${galera_arch}.tar.gz
             mv -vi ${version}-linux-glibc_214-${galera_arch}.tar.gz ${version}-linux-glibc_214-${galera_arch}.tar.gz.orig
             mv -vi *-linux-${galera_arch} ${version}-linux-glibc_214-${galera_arch}
-            #cp -avi ${dir_galera}/galera-${ver_galera_preferred}/bintar/galera-${ver_galera_preferred}-glibc_214-${galera_arch}/usr/bin/* ${version}-linux-glibc_214-${galera_arch}/bin/
-            #cp -avi ${dir_galera}/galera-${ver_galera_preferred}/bintar/galera-${ver_galera_preferred}-glibc_214-${galera_arch}/usr/lib/* ${version}-linux-glibc_214-${galera_arch}/lib/
-            rsync -av ${dir_galera}/galera-${ver_galera_preferred}/bintar/galera-${ver_galera_preferred}-glibc_214-${galera_arch}/usr/bin/ ${version}-linux-glibc_214-${galera_arch}/bin/
-            rsync -av ${dir_galera}/galera-${ver_galera_preferred}/bintar/galera-${ver_galera_preferred}-glibc_214-${galera_arch}/usr/lib/ ${version}-linux-glibc_214-${galera_arch}/lib/
-            echo "+ tar -czf ${version}-linux-glibc_214-${galera_arch}.tar.gz ${version}-linux-glibc_214-${galera_arch}"
-                    tar -czf ${version}-linux-glibc_214-${galera_arch}.tar.gz ${version}-linux-glibc_214-${galera_arch}
+            #cp -avi ${dir_galera}/galera-${ver_galera_preferred_real}/bintar/galera-${ver_galera_preferred_real}-glibc_214-${galera_arch}/usr/bin/* ${version}-linux-glibc_214-${galera_arch}/bin/
+            #cp -avi ${dir_galera}/galera-${ver_galera_preferred_real}/bintar/galera-${ver_galera_preferred_real}-glibc_214-${galera_arch}/usr/lib/* ${version}-linux-glibc_214-${galera_arch}/lib/
+            rsync -av ${dir_galera}/galera-${ver_galera_preferred_real}/bintar/galera-${ver_galera_preferred_real}-glibc_214-${galera_arch}/usr/bin/ ${version}-linux-glibc_214-${galera_arch}/bin/
+            rsync -av ${dir_galera}/galera-${ver_galera_preferred_real}/bintar/galera-${ver_galera_preferred_real}-glibc_214-${galera_arch}/usr/lib/ ${version}-linux-glibc_214-${galera_arch}/lib/
+            runCommand tar -czf ${version}-linux-glibc_214-${galera_arch}.tar.gz ${version}-linux-glibc_214-${galera_arch}
             rm -rf ${version}-linux-glibc_214-${galera_arch}
           else
             echo "not a galera release, but still unpacking, re-packing so the dir name is correct"
-            echo "+ tar -zxf ${version}-linux-glibc_214-${galera_arch}.tar.gz"
-                    tar -zxf ${version}-linux-glibc_214-${galera_arch}.tar.gz
+            runCommand tar -zxf ${version}-linux-glibc_214-${galera_arch}.tar.gz
             mv -vi ${version}-linux-glibc_214-${galera_arch}.tar.gz ${version}-linux-glibc_214-${galera_arch}.tar.gz.orig
             mv -vi *-linux-${galera_arch} ${version}-linux-glibc_214-${galera_arch}
-            echo "+ tar -czf ${version}-linux-glibc_214-${galera_arch}.tar.gz ${version}-linux-glibc_214-${galera_arch}"
-                    tar -czf ${version}-linux-glibc_214-${galera_arch}.tar.gz ${version}-linux-glibc_214-${galera_arch}
+            runCommand tar -czf ${version}-linux-glibc_214-${galera_arch}.tar.gz ${version}-linux-glibc_214-${galera_arch}
             rm -rf ${version}-linux-glibc_214-${galera_arch}
           fi
 
@@ -1232,25 +1215,21 @@ if [ "${create_bintar}" != "no" ]; then
           if [ "${galera_suffix}" = "-galera" ] || [[ "${tree}" = *10.[1-9]* ]]; then
             # If this is a galera release we need to copy in the galera libraries
             # and repack the bintar
-            echo "+ tar -zxf ${version}-linux-systemd-${galera_arch}.tar.gz"
-                    tar -zxf ${version}-linux-systemd-${galera_arch}.tar.gz
+            runCommand tar -zxf ${version}-linux-systemd-${galera_arch}.tar.gz
             mv -vi ${version}-linux-systemd-${galera_arch}.tar.gz ${version}-linux-systemd-${galera_arch}.tar.gz.orig
             mv -vi *-linux-${galera_arch} ${version}-linux-systemd-${galera_arch}
-            #cp -avi ${dir_galera}/galera-${ver_galera_preferred}/bintar/galera-${ver_galera_preferred}-systemd-${galera_arch}/usr/bin/* ${version}-linux-systemd-${galera_arch}/bin/
-            #cp -avi ${dir_galera}/galera-${ver_galera_preferred}/bintar/galera-${ver_galera_preferred}-systemd-${galera_arch}/usr/lib/* ${version}-linux-systemd-${galera_arch}/lib/
-            rsync -av ${dir_galera}/galera-${ver_galera_preferred}/bintar/galera-${ver_galera_preferred}-systemd-${galera_arch}/usr/bin/ ${version}-linux-systemd-${galera_arch}/bin/
-            rsync -av ${dir_galera}/galera-${ver_galera_preferred}/bintar/galera-${ver_galera_preferred}-systemd-${galera_arch}/usr/lib/ ${version}-linux-systemd-${galera_arch}/lib/
-            echo "+ tar -czf ${version}-linux-systemd-${galera_arch}.tar.gz ${version}-linux-systemd-${galera_arch}"
-                    tar -czf ${version}-linux-systemd-${galera_arch}.tar.gz ${version}-linux-systemd-${galera_arch}
+            #cp -avi ${dir_galera}/galera-${ver_galera_preferred_real}/bintar/galera-${ver_galera_preferred_real}-systemd-${galera_arch}/usr/bin/* ${version}-linux-systemd-${galera_arch}/bin/
+            #cp -avi ${dir_galera}/galera-${ver_galera_preferred_real}/bintar/galera-${ver_galera_preferred_real}-systemd-${galera_arch}/usr/lib/* ${version}-linux-systemd-${galera_arch}/lib/
+            rsync -av ${dir_galera}/galera-${ver_galera_preferred_real}/bintar/galera-${ver_galera_preferred_real}-systemd-${galera_arch}/usr/bin/ ${version}-linux-systemd-${galera_arch}/bin/
+            rsync -av ${dir_galera}/galera-${ver_galera_preferred_real}/bintar/galera-${ver_galera_preferred_real}-systemd-${galera_arch}/usr/lib/ ${version}-linux-systemd-${galera_arch}/lib/
+            runCommand tar -czf ${version}-linux-systemd-${galera_arch}.tar.gz ${version}-linux-systemd-${galera_arch}
             rm -rf ${version}-linux-systemd-${galera_arch}
           else
             echo "not a galera release, but still unpacking, re-packing so the dir name is correct"
-            echo "+ tar -zxf ${version}-linux-systemd-${galera_arch}.tar.gz"
-                    tar -zxf ${version}-linux-systemd-${galera_arch}.tar.gz
+            runCommand tar -zxf ${version}-linux-systemd-${galera_arch}.tar.gz
             mv -vi ${version}-linux-systemd-${galera_arch}.tar.gz ${version}-linux-systemd-${galera_arch}.tar.gz.orig
             mv -vi *-linux-${galera_arch} ${version}-linux-systemd-${galera_arch}
-            echo "+ tar -czf ${version}-linux-systemd-${galera_arch}.tar.gz ${version}-linux-systemd-${galera_arch}"
-                    tar -czf ${version}-linux-systemd-${galera_arch}.tar.gz ${version}-linux-systemd-${galera_arch}
+            runCommand tar -czf ${version}-linux-systemd-${galera_arch}.tar.gz ${version}-linux-systemd-${galera_arch}
             rm -rf ${version}-linux-systemd-${galera_arch}
           fi
 
@@ -1291,22 +1270,20 @@ if [ "${create_bintar}" != "no" ]; then
               fi
               galera_arch="i686"
             fi
-            echo "+ tar -zxf ${version}-linux-${galera_arch}.tar.gz"
-                    tar -zxf ${version}-linux-${galera_arch}.tar.gz
+            runCommand tar -zxf ${version}-linux-${galera_arch}.tar.gz
             mv -vi ${version}-linux-${galera_arch}.tar.gz ${version}-linux-${galera_arch}.tar.gz.orig
             # if the directory isn't named like we want, rename it
             if [ ! -d ${version}-linux-${galera_arch} ]; then
               mv -vi *-linux-${galera_arch} ${version}-linux-${galera_arch}
             fi
-            #cp -avi ${dir_galera}/galera-${ver_galera_preferred}/bintar/galera-${ver_galera_preferred}-${galera_arch}/usr/bin/* ${version}-linux-${galera_arch}/bin/
-            #cp -avi ${dir_galera}/galera-${ver_galera_preferred}/bintar/galera-${ver_galera_preferred}-${galera_arch}/usr/lib*/* ${version}-linux-${galera_arch}/lib/
-            rsync -av ${dir_galera}/galera-${ver_galera_preferred}/bintar/galera-${ver_galera_preferred}-${galera_arch}/usr/bin/ ${version}-linux-${galera_arch}/bin/
-            rsync -av ${dir_galera}/galera-${ver_galera_preferred}/bintar/galera-${ver_galera_preferred}-${galera_arch}/usr/lib/ ${version}-linux-${galera_arch}/lib/
-            #if [ -d ${dir_galera}/galera-${ver_galera_preferred}/bintar/galera-${ver_galera_preferred}-${galera_arch}/usr/lib64 ];then
-            #  rsync -av ${dir_galera}/galera-${ver_galera_preferred}/bintar/galera-${ver_galera_preferred}-${galera_arch}/usr/lib64 ${version}-linux-${galera_arch}/
+            #cp -avi ${dir_galera}/galera-${ver_galera_preferred_real}/bintar/galera-${ver_galera_preferred_real}-${galera_arch}/usr/bin/* ${version}-linux-${galera_arch}/bin/
+            #cp -avi ${dir_galera}/galera-${ver_galera_preferred_real}/bintar/galera-${ver_galera_preferred_real}-${galera_arch}/usr/lib*/* ${version}-linux-${galera_arch}/lib/
+            rsync -av ${dir_galera}/galera-${ver_galera_preferred_real}/bintar/galera-${ver_galera_preferred_real}-${galera_arch}/usr/bin/ ${version}-linux-${galera_arch}/bin/
+            rsync -av ${dir_galera}/galera-${ver_galera_preferred_real}/bintar/galera-${ver_galera_preferred_real}-${galera_arch}/usr/lib/ ${version}-linux-${galera_arch}/lib/
+            #if [ -d ${dir_galera}/galera-${ver_galera_preferred_real}/bintar/galera-${ver_galera_preferred_real}-${galera_arch}/usr/lib64 ];then
+            #  rsync -av ${dir_galera}/galera-${ver_galera_preferred_real}/bintar/galera-${ver_galera_preferred_real}-${galera_arch}/usr/lib64 ${version}-linux-${galera_arch}/
             #fi
-            echo "+ tar -czf ${version}-linux-${galera_arch}.tar.gz ${version}-linux-${galera_arch}"
-                    tar -czf ${version}-linux-${galera_arch}.tar.gz ${version}-linux-${galera_arch}
+            runCommand tar -czf ${version}-linux-${galera_arch}.tar.gz ${version}-linux-${galera_arch}
             rm -rf ${version}-linux-${galera_arch}
             # since we repacked them, we also need to regenerate the sums
             if [ -e md5sums.txt ]; then
@@ -1381,7 +1358,7 @@ if [ "${create_bintar}" != "no" ]; then
         echo
         # copy the dir to the corp dir
         echo "+ copying ${dir_array[1]} to ${dir_corp}/${dir_name}/"
-        rsync -avP --delete ${dir_release}/${dir_name}/${dir_array[1]} ${dir_corp}/${dir_name}/
+        runCommand rsync -avP --delete ${dir_release}/${dir_name}/${dir_array[1]} ${dir_corp}/${dir_name}/
         echo
         echo
       else
@@ -1401,12 +1378,12 @@ if [ "${create_bintar}" != "no" ]; then
     line
     echo "+ transfering Galera source and package files..."
     line
-    for galera_version in ${ver_galera}; do
+    for galera_version in ${ver_galera_real}; do
       mkdir -vp ./galera-${galera_version}
       # rsync the galera dir to the release dir
-      if rsync ${rsync_opts} --exclude=repo "${dir_galera}/galera-${galera_version}-${suffix}/" "./galera-${galera_version}/"; then
+      if runCommand rsync ${rsync_opts} --exclude=repo "${dir_galera}/galera-${galera_version}-${suffix}/" "./galera-${galera_version}/"; then
         # rsync the galera dir to the corp dir
-        if rsync ${rsync_opts} --exclude=repo --exclude=*ppc64* --exclude=deb/ --exclude=rpm/ "${dir_galera}/galera-${galera_version}-${suffix}/" "${dir_corp}/${dir_name}/galera-${galera_version}/"; then
+        if runCommand rsync ${rsync_opts} --exclude=repo --exclude=*ppc64* --exclude=deb/ --exclude=rpm/ "${dir_galera}/galera-${galera_version}-${suffix}/" "${dir_corp}/${dir_name}/galera-${galera_version}/"; then
           echo "+ transfer of ${dir_galera}/galera-${galera_version} done"
         fi
         echo
@@ -1453,24 +1430,24 @@ if [ "${galera_suffix}" != "-galera" ]; then
       pushd ${dir_release}/${dir_name}/${arch}-packages
       for pkgtype in msi zip; do
         #wget -N ${winbuilder}/${tree}/${rev}/${version}-${arch}.${pkgtype}
-        wget -N ${winbuilder}/${tree}/build-${tarbuildnum}/${arch}-packages/${version}-${arch}.${pkgtype}
+        runCommand wget -N ${winbuilder}/${tree}/build-${tarbuildnum}/${arch}-packages/${version}-${arch}.${pkgtype}
 
         # Download debugsymbols package for 10.2+ releases
         if [ "${pkgtype}" = "zip" ]; then
           case ${tree} in
-            '5.5'|'5.5-galera'|'10.0'|'10.0-galera'|'10.1'|'bb-10.1-release')
+            '5.5'|'5.5-galera'|'10.0'|'10.0-galera'|'10.1'|'bb-10.1-release'|'bb-10.0-release')
               echo "+ tree=${tree}, so not downloading debugsymbols package..."
               ;;
             *)
               echo "+ tree=${tree}, so downloading debugsymbols package..."
-              wget -N ${winbuilder}/${tree}/build-${tarbuildnum}/${arch}-packages/${version}-${arch}-debugsymbols.${pkgtype}
+              runCommand wget -N ${winbuilder}/${tree}/build-${tarbuildnum}/${arch}-packages/${version}-${arch}-debugsymbols.${pkgtype}
               ;;
           esac
         fi
 
       done
       #wget ${winbuilder}/${tree}/${rev}/md5sums.txt
-      wget ${winbuilder}/${tree}/build-${tarbuildnum}/${arch}-packages/md5sums.txt
+      runCommand wget ${winbuilder}/${tree}/build-${tarbuildnum}/${arch}-packages/md5sums.txt
     done
     line
     echo "+ fixing Win md5sums..."
@@ -1478,7 +1455,7 @@ if [ "${galera_suffix}" != "-galera" ]; then
     for arch in win32 winx64; do
       pushd ${dir_release}/${dir_name}/${arch}-packages
       pwd
-      dos2unix md5sums.txt
+      runCommand dos2unix md5sums.txt
       grep ${arch} md5sums.txt > md5sums.txt.tmp
       mv -v md5sums.txt.tmp md5sums.txt
       #pwd
@@ -1606,8 +1583,12 @@ else
     popd
 
     # after creating the repo, copy it to ${dir_release}/repo-no-mgc
-    echo "+ rsync -a --info=progress2 --delete ${dir_release}/${dir_name}/repo/debian ${dir_release}/repo-no-mgc/${num}/"
-            rsync -a --info=progress2 --delete ${dir_release}/${dir_name}/repo/debian ${dir_release}/repo-no-mgc/${num}/
+    case ${tree} in
+      '5.5'|'10.0'|'bb-5.5-release'|'bb-10.0-release')
+        echo "+ rsync -a --info=progress2 --delete ${dir_release}/${dir_name}/repo/debian ${dir_release}/repo-no-mgc/${num}/"
+                rsync -a --info=progress2 --delete ${dir_release}/${dir_name}/repo/debian ${dir_release}/repo-no-mgc/${num}/
+        ;;
+    esac
     echo
   else
     line
@@ -1656,8 +1637,12 @@ else
     popd
 
     # after creating the repo, copy it to ${dir_release}/repo-no-mgc
-    echo "+ rsync -a --info=progress2 --delete ${dir_release}/${dir_name}/repo/ubuntu ${dir_release}/repo-no-mgc/${num}/"
-            rsync -a --info=progress2 --delete ${dir_release}/${dir_name}/repo/ubuntu ${dir_release}/repo-no-mgc/${num}/
+    case ${tree} in
+      '5.5'|'10.0'|'bb-5.5-release'|'bb-10.0-release')
+        echo "+ rsync -a --info=progress2 --delete ${dir_release}/${dir_name}/repo/ubuntu ${dir_release}/repo-no-mgc/${num}/"
+                rsync -a --info=progress2 --delete ${dir_release}/${dir_name}/repo/ubuntu ${dir_release}/repo-no-mgc/${num}/
+        ;;
+    esac
     echo
   else
     line
@@ -1730,8 +1715,12 @@ else
     fi
     #echo "+ cp -ai ${dir_release}/${dir_name}/yum ${dir_release}/yum-no-mgc/${num}"
     #        cp -ai ${dir_release}/${dir_name}/yum ${dir_release}/yum-no-mgc/${num}
-    echo "+ rsync -a --info=progress2 --delete ${dir_release}/${dir_name}/yum ${dir_release}/yum-no-mgc/${num}"
-            rsync -a --info=progress2 --delete ${dir_release}/${dir_name}/yum ${dir_release}/yum-no-mgc/${num}
+    case ${tree} in
+      '5.5'|'10.0'|'bb-5.5-release'|'bb-10.0-release')
+        echo "+ rsync -a --info=progress2 --delete ${dir_release}/${dir_name}/yum ${dir_release}/yum-no-mgc/${num}"
+                rsync -a --info=progress2 --delete ${dir_release}/${dir_name}/yum ${dir_release}/yum-no-mgc/${num}
+        ;;
+    esac
     echo
   else
     line

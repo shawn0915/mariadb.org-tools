@@ -21,6 +21,12 @@ dir_build=${2}
 
 dir_odbc="connector-odbc-${version}"
 
+# set location of prep.conf and prep.log to XDG-compatible directories and then
+# create them if they don't exist
+dir_conf=${XDG_CONFIG_HOME:-~/.config}
+dir_log=${XDG_DATA_HOME:-~/.local/share}
+
+
 #-------------------------------------------------------------------------------
 #  Functions
 #-------------------------------------------------------------------------------
@@ -45,11 +51,11 @@ userResponse() {
 
 loadDefaults() {
   # Load the paths (if they exist)
-  if [ -f ${HOME}/.prep.conf ]; then
-      . ${HOME}/.prep.conf
+  if [ -f ${dir_conf}/prep.conf ]; then
+      . ${dir_conf}/prep.conf
   else
     echo
-    echo "The file ${HOME}/.prep.conf does not exist in your home."
+    echo "The file ${dir_conf}/prep.conf does not exist in your home."
     echo "The prep script creates a default template of this file when run."
     echo "Exiting..."
     exit 1
@@ -102,11 +108,15 @@ copy_and_stage_files() {
       mkdir -v ${dir_odbc}
     fi
     # Linux files
-    cp -avi ${dir_build}/*/*.gz ${dir_odbc}/
+    cp -avi ${dir_build}/*/*i686.tar.gz ${dir_odbc}/
+    cp -avi ${dir_build}/*/*x86_64.tar.gz ${dir_odbc}/
     # Windows files
     cp -avi ${dir_build}/win*/*msi ${dir_odbc}/
-    # Src file
-    cp -avi ${dir_build}/*/*.zip ${dir_odbc}/
+    # Mac file
+    cp -avi ${dir_build}/mac*/*pkg ${dir_odbc}/
+    # Src files
+    cp -avi ${dir_build}/*/*src.zip ${dir_odbc}/
+    cp -avi ${dir_build}/*/*src.tar.gz ${dir_odbc}/
   popd
   echo;echo;echo
 }

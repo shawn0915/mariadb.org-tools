@@ -52,14 +52,14 @@ win
 "
 
 # bundle members versions
-cj17='1.7.4'
-cj23='2.3.0'
+cj18='1.8.0'
+cj24='2.4.1'
 cc23='2.3.7'
-cc30='3.0.7'
-co30='3.0.7'
+cc30='3.0.9'
+co30='3.0.8'
 co20='2.0.18'
-cn20='2.0.1'
-maxscale='2.2.17'
+cn20='2.0.3'
+maxscale='2.3.4'
 
 
 #-------------------------------------------------------------------------------
@@ -98,6 +98,12 @@ galera_suffix=""
       numflag=false
       tarflag=false
 
+# set location of prep.conf and prep.log to XDG-compatible directories and then
+# create them if they don't exist
+dir_conf=${XDG_CONFIG_HOME:-~/.config}
+dir_log=${XDG_DATA_HOME:-~/.local/share}
+
+
 #-------------------------------------------------------------------------------
 # Functions
 #-------------------------------------------------------------------------------
@@ -114,11 +120,11 @@ runCommand() {
 
 loadDefaults() {
   # Load the paths (if they exist)
-  if [ -f ${HOME}/.prep.conf ]; then
-      . ${HOME}/.prep.conf
+  if [ -f ${dir_conf}/prep.conf ]; then
+      . ${dir_conf}/prep.conf
   else
     echo
-    echo "The file ${HOME}/.prep.conf does not exist in your home."
+    echo "The file ${dir_conf}/prep.conf does not exist in your home."
     echo "The prep script creates a default template of this file when run."
     echo "Exiting..."
     exit 1
@@ -189,8 +195,8 @@ for bundle in ${bundles}; do
 
   mkdir -v ${dir}
   pushd ${dir}
-    rsync ${rsync_opts} ${cj_home}/connector-java-${cj17}/mariadb-java-client-${cj17}.jar ./
-    rsync ${rsync_opts} ${cj_home}/connector-java-${cj23}/mariadb-java-client-${cj23}.jar ./
+    rsync ${rsync_opts} ${cj_home}/connector-java-${cj18}/mariadb-java-client-${cj18}.jar ./
+    rsync ${rsync_opts} ${cj_home}/connector-java-${cj24}/mariadb-java-client-${cj24}.jar ./
 
     if [ "${dist}" = "win" ]; then
       rsync ${rsync_opts} ${cn_home}/connector-nodejs-${cn20}/mariadb-connector-nodejs-${cn20}*.zip ./
